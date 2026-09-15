@@ -1,0 +1,5 @@
+/flowmark
+*.exe
+*.test
+*.out
+/dist/
