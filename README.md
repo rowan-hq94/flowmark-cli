@@ -70,11 +70,14 @@ Second paragraph here.
   display columns, so combining characters and wide (e.g. CJK) characters
   aren't handled with full visual accuracy yet.
 - `unflow`/`flow` use `-w 0` to mean "don't wrap" - one line per paragraph.
+- Quote depth (email reply nesting) is understood: a leading run of `>`
+  characters on a line marks that paragraph's depth, the wrap width for a
+  quoted line is reduced to leave room for its `>` prefix, and a change in
+  quote depth always ends a paragraph, even without a blank line between.
 
 ## Known limitations
 
-This is a first pass. It does not yet understand RFC 3676's quote-depth
-convention (`>` prefixes marking nested email replies) - a `>` at the start
-of a line is currently just stuffed like any other awkward character, not
-treated as a quote marker that changes paragraph boundaries. See the
-roadmap in the project history for what's planned next.
+`-delsp` (RFC 3676's flag for stripping the space before a soft break
+instead of keeping it) isn't implemented - `unflow` always assumes
+`delsp=no`. See the roadmap in the project history for what's planned
+next.

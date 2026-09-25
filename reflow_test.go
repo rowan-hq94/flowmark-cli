@@ -56,20 +56,35 @@ func TestParseWrapped(t *testing.T) {
 	cases := []struct {
 		name  string
 		input string
-		want  []string
+		want  []Para
 	}{
 		{"empty input", "", nil},
 		{"blank input", "\n\n\n", nil},
-		{"single line", "hello world", []string{"hello world"}},
+		{"single line", "hello world", []Para{{0, "hello world"}}},
 		{
 			"wrapped lines join with a single space",
 			"line one\nline two\n\nsecond para",
-			[]string{"line one line two", "second para"},
+			[]Para{{0, "line one line two"}, {0, "second para"}},
 		},
-		{"multiple blank lines still just one break", "a\n\n\n\nb", []string{"a", "b"}},
-		{"crlf line endings", "a\r\nb\r\n\r\nc", []string{"a b", "c"}},
-		{"tabs and runs of spaces collapse", "a\tb   c", []string{"a b c"}},
-		{"leading and trailing blank lines are dropped", "\n\nhello\n\n", []string{"hello"}},
+		{"multiple blank lines still just one break", "a\n\n\n\nb", []Para{{0, "a"}, {0, "b"}}},
+		{"crlf line endings", "a\r\nb\r\n\r\nc", []Para{{0, "a b"}, {0, "c"}}},
+		{"tabs and runs of spaces collapse", "a\tb   c", []Para{{0, "a b c"}}},
+		{"leading and trailing blank lines are dropped", "\n\nhello\n\n", []Para{{0, "hello"}}},
+		{
+			"quoted lines join at the same depth",
+			"> line one\n> line two",
+			[]Para{{1, "line one line two"}},
+		},
+		{
+			"a depth change splits the paragraph without a blank line",
+			"> quoted\nunquoted",
+			[]Para{{1, "quoted"}, {0, "unquoted"}},
+		},
+		{
+			"nested quote depth",
+			">> deeper reply",
+			[]Para{{2, "deeper reply"}},
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -84,14 +99,26 @@ func TestParseWrapped(t *testing.T) {
 func TestFormatWrapped(t *testing.T) {
 	cases := []struct {
 		name  string
-		paras []string
+		paras []Para
 		width int
 		want  string
 	}{
 		{"no paragraphs", nil, 72, ""},
-		{"one short word per line", []string{"hello world"}, 5, "hello\nworld\n"},
-		{"blank line between paragraphs", []string{"a b", "c d"}, 10, "a b\n\nc d\n"},
-		{"unsplittable long word", []string{"supercalifragilistic"}, 5, "supercalifragilistic\n"},
+		{"one short word per line", []Para{{0, "hello world"}}, 5, "hello\nworld\n"},
+		{"blank line between paragraphs", []Para{{0, "a b"}, {0, "c d"}}, 10, "a b\n\nc d\n"},
+		{"unsplittable long word", []Para{{0, "supercalifragilistic"}}, 5, "supercalifragilistic\n"},
+		{
+			"quoted paragraph gets a prefix on every line",
+			[]Para{{1, "a longer reply that wraps"}},
+			10,
+			"> a longer\n> reply\n> that\n> wraps\n",
+		},
+		{
+			"nested quote prefix",
+			[]Para{{2, "short"}},
+			10,
+			">> short\n",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -107,10 +134,18 @@ func TestFormatFlowedStuffing(t *testing.T) {
 	// Force ">tag" onto its own line so we can check that it gets a
 	// stuffed leading space and a soft-break trailing space, while the
 	// final, unbroken line of the paragraph gets neither.
-	got := FormatFlowed([]string{">tag rest"}, 4)
+	got := FormatFlowed([]Para{{0, ">tag rest"}}, 4)
 	want := " >tag \nrest\n"
 	if got != want {
 		t.Errorf("FormatFlowed stuffing case = %q, want %q", got, want)
+	}
+}
+
+func TestFormatFlowedQuoted(t *testing.T) {
+	got := FormatFlowed([]Para{{1, "a longer reply that wraps"}}, 10)
+	want := "> a longer \n> reply \n> that \n> wraps\n"
+	if got != want {
+		t.Errorf("FormatFlowed quoted case = %q, want %q", got, want)
 	}
 }
 
@@ -118,13 +153,28 @@ func TestParseFlowed(t *testing.T) {
 	cases := []struct {
 		name  string
 		input string
-		want  []string
+		want  []Para
 	}{
 		{"empty input", "", nil},
-		{"soft break joins with the trailing space", "hello \nworld\n", []string{"hello world"}},
-		{"stuffed quote marker is destuffed", " >tag \nrest\n", []string{">tag rest"}},
-		{"two fixed lines are two paragraphs", "a\nb\n", []string{"a", "b"}},
-		{"stray blank line between paragraphs is harmless", "a\n\nb\n", []string{"a", "b"}},
+		{"soft break joins with the trailing space", "hello \nworld\n", []Para{{0, "hello world"}}},
+		{"stuffed quote marker is destuffed", " >tag \nrest\n", []Para{{0, ">tag rest"}}},
+		{"two fixed lines are two paragraphs", "a\nb\n", []Para{{0, "a"}, {0, "b"}}},
+		{"stray blank line between paragraphs is harmless", "a\n\nb\n", []Para{{0, "a"}, {0, "b"}}},
+		{
+			"quoted soft break joins at the same depth",
+			"> a longer \n> reply\n",
+			[]Para{{1, "a longer reply"}},
+		},
+		{
+			"a depth change ends the paragraph even mid soft-break",
+			"> quoted \nunquoted\n",
+			[]Para{{1, "quoted"}, {0, "unquoted"}},
+		},
+		{
+			"nested quote depth",
+			">> deeper reply\n",
+			[]Para{{2, "deeper reply"}},
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -142,15 +192,18 @@ func TestParseFlowed(t *testing.T) {
 func TestFlowedRoundTrip(t *testing.T) {
 	cases := []struct {
 		name  string
-		paras []string
+		paras []Para
 		width int
 	}{
-		{"plain paragraph", []string{"the quick brown fox jumps over the lazy dog"}, 10},
-		{"quote-like content", []string{">quoted line of text"}, 6},
-		{"single very long word", []string{"supercalifragilisticexpialidocious"}, 8},
-		{"unlimited width", []string{"a b c d e"}, 0},
-		{"several paragraphs", []string{"first paragraph", "second one", "third and last"}, 12},
-		{"unicode content", []string{"héllo wörld", "你好 世界"}, 4},
+		{"plain paragraph", []Para{{0, "the quick brown fox jumps over the lazy dog"}}, 10},
+		{"quote-like content", []Para{{0, ">quoted line of text"}}, 6},
+		{"single very long word", []Para{{0, "supercalifragilisticexpialidocious"}}, 8},
+		{"unlimited width", []Para{{0, "a b c d e"}}, 0},
+		{"several paragraphs", []Para{{0, "first paragraph"}, {0, "second one"}, {0, "third and last"}}, 12},
+		{"unicode content", []Para{{0, "héllo wörld"}, {0, "你好 世界"}}, 4},
+		{"quoted reply", []Para{{1, "this is a quoted reply that wraps"}}, 10},
+		{"nested quoted reply", []Para{{2, "double quoted text"}}, 8},
+		{"mixed quote depths", []Para{{0, "top level text"}, {1, "a reply"}, {2, "a nested reply"}}, 8},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
