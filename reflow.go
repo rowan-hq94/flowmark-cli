@@ -165,6 +165,22 @@ func FormatWrapped(paras []Para, width int) string {
 // a space or '>' is space-stuffed so it can't be mistaken for a soft-break
 // artifact or a deeper quote marker.
 func FormatFlowed(paras []Para, width int) string {
+	return formatFlowed(paras, width, false)
+}
+
+// FormatFlowedDelSp is FormatFlowed for delsp=yes streams. A reader honouring
+// delsp deletes the one trailing space on each soft-broken line when it
+// joins lines, so the space that separates two words has to be written
+// twice for a single space to survive the round trip.
+func FormatFlowedDelSp(paras []Para, width int) string {
+	return formatFlowed(paras, width, true)
+}
+
+func formatFlowed(paras []Para, width int, delsp bool) string {
+	softEnd := " "
+	if delsp {
+		softEnd = "  "
+	}
 	var b strings.Builder
 	for _, p := range paras {
 		words := strings.Fields(p.Text)
@@ -190,7 +206,7 @@ func FormatFlowed(paras []Para, width int) string {
 			}
 			full := prefix + sep + line
 			if i != len(lines)-1 {
-				full += " "
+				full += softEnd
 			}
 			b.WriteString(full)
 			b.WriteString("\n")
@@ -206,6 +222,17 @@ func FormatFlowed(paras []Para, width int) string {
 // always closes the paragraph in progress, even mid soft-break, since RFC
 // 3676 treats a quote depth change as an unconditional boundary.
 func ParseFlowed(input string) []Para {
+	return parseFlowed(input, false)
+}
+
+// ParseFlowedDelSp is ParseFlowed for delsp=yes streams: the trailing space
+// of a soft-broken line is a marker only and is dropped when the line is
+// joined to the next, instead of serving as the word separator.
+func ParseFlowedDelSp(input string) []Para {
+	return parseFlowed(input, true)
+}
+
+func parseFlowed(input string, delsp bool) []Para {
 	input = strings.ReplaceAll(input, "\r\n", "\n")
 	input = strings.TrimSuffix(input, "\n")
 	if input == "" {
@@ -227,6 +254,12 @@ func ParseFlowed(input string) []Para {
 	}
 	for _, line := range strings.Split(input, "\n") {
 		soft := strings.HasSuffix(line, " ")
+		if soft && delsp {
+			// Drop the marker before looking at quote and stuffing
+			// spaces, so a line that is only a marker can't be
+			// consumed twice.
+			line = line[:len(line)-1]
+		}
 		depth, rest := splitQuoteDepth(line)
 		if strings.HasPrefix(rest, " ") {
 			rest = rest[1:]

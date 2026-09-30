@@ -75,9 +75,16 @@ Second paragraph here.
   quoted line is reduced to leave room for its `>` prefix, and a change in
   quote depth always ends a paragraph, even without a blank line between.
 
+## delsp
+
+By default the trailing space on a soft-broken line is the word separator
+(`delsp=no`). With `-delsp` it is only a marker that is deleted when lines
+are joined (`delsp=yes`). `flow -delsp` writes two trailing spaces on soft
+lines so that one space survives the join, and `unflow -delsp` deletes one
+trailing space per soft line. Use the same setting in both directions, and
+match whatever the other end of the pipe declares in its `DelSp` header
+parameter.
+
 ## Known limitations
 
-`-delsp` (RFC 3676's flag for stripping the space before a soft break
-instead of keeping it) isn't implemented - `unflow` always assumes
-`delsp=no`. See the roadmap in the project history for what's planned
-next.
+Input and output are stdin and stdout only.
