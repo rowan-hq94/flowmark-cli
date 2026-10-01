@@ -85,6 +85,16 @@ trailing space per soft line. Use the same setting in both directions, and
 match whatever the other end of the pipe declares in its `DelSp` header
 parameter.
 
-## Known limitations
+## Files
 
-Input and output are stdin and stdout only.
+With no file argument flowmark reads stdin and writes stdout. A single
+file argument is read instead of stdin (`-` still means stdin), and `-o`
+writes to a file instead of stdout. Flags must come before the file name.
+
+```
+$ ./flowmark flow -o notes.flowed notes.txt
+$ ./flowmark unflow -w 40 -o notes.txt notes.txt
+```
+
+The input is read completely before the output file is opened, so `-o` can
+name the input file to convert it in place.
